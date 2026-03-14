@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>(Dé)coupe et (re)colle</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,600;1,300&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0c13;--surface:#111219;--panel:#14151f;
+  --card:#1b1d2a;--card-h:#232538;
+  --border:#282a3d;--border-l:#363956;
+  --accent:#e8a838;--accent-dim:rgba(232,168,56,.12);--accent-glow:rgba(232,168,56,.25);
+  --text:#dddad0;--text-dim:#8e90a6;--text-muted:#565874;
+  --sep-color:#5b8ad4;--sep-dim:rgba(91,138,212,.12);
+}
+body{font-family:'Jost',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden}
+
+/* UPLOAD */
+#upload-screen{height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2.5rem;background:radial-gradient(ellipse at 50% -10%,rgba(232,168,56,.08) 0%,transparent 60%)}
+.app-brand{text-align:center}
+.app-brand .serif{font-family:'Cormorant Garamond',serif;font-size:3.2rem;font-weight:300;letter-spacing:.06em;color:var(--text);display:block;line-height:1}
+.app-brand .tag{display:block;font-size:.7rem;font-weight:600;letter-spacing:.28em;color:var(--accent);text-transform:uppercase;margin-top:.5rem}
+.drop-zone{width:460px;height:250px;border:1.5px dashed var(--border-l);border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.8rem;cursor:pointer;transition:all .3s;background:var(--surface)}
+.drop-zone:hover,.drop-zone.over{border-color:var(--accent);background:var(--accent-dim);box-shadow:0 0 50px var(--accent-glow),inset 0 0 30px rgba(232,168,56,.03)}
+.drop-icon{font-size:2.2rem;opacity:.35;line-height:1}
+.drop-main{font-size:.95rem;font-weight:500}
+.drop-sub{font-size:.82rem;color:var(--text-muted)}
+.file-link{color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.privacy{font-size:.7rem;color:var(--text-muted);letter-spacing:.06em}
+
+/* LOADING */
+#loading-overlay{position:fixed;inset:0;background:rgba(11,12,19,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.4rem;z-index:200;backdrop-filter:blur(10px)}
+.spinner{width:38px;height:38px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-msg{font-size:.85rem;color:var(--text-dim);font-weight:300;letter-spacing:.12em}
+
+/* EDITOR */
+#editor-screen{height:100vh;display:flex}
+
+/* GALLERY */
+#gallery-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.gallery-bar{padding:.9rem 1.4rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.9rem;background:var(--surface);flex-shrink:0}
+.g-file{flex:1;min-width:0}
+.g-fname{font-weight:500;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.g-pcount{font-size:.75rem;color:var(--text-muted);margin-left:.4rem}
+.g-btns{display:flex;gap:.4rem;flex-shrink:0}
+.btn-ghost{background:none;border:1px solid var(--border);color:var(--text-dim);font-family:'Jost',sans-serif;font-size:.72rem;padding:.3rem .65rem;border-radius:5px;cursor:pointer;transition:all .2s;font-weight:400;white-space:nowrap}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+.sel-badge{font-size:.75rem;color:var(--accent);font-weight:500;white-space:nowrap;flex-shrink:0}
+#thumbnails-grid{flex:1;overflow-y:auto;padding:1.25rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1rem;align-content:start}
+
+/* THUMB CARD */
+.thumb-card{background:var(--card);border-radius:9px;border:2px solid transparent;overflow:hidden;cursor:pointer;transition:all .22s;position:relative}
+.thumb-card:hover{background:var(--card-h);transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.3)}
+.thumb-card.selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),0 6px 20px rgba(232,168,56,.15)}
+.thumb-wrap{width:100%;aspect-ratio:1/1.414;background:#20223a;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+.thumb-wrap canvas{width:100%;height:100%;object-fit:contain;display:block}
+.thumb-ph{font-size:.65rem;color:var(--text-muted);letter-spacing:.1em}
+.thumb-check{position:absolute;top:7px;right:7px;width:20px;height:20px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;color:#000;font-weight:700;opacity:0;transform:scale(.5);transition:all .2s;z-index:2}
+.thumb-card.selected .thumb-check{opacity:1;transform:scale(1)}
+.thumb-order{position:absolute;top:7px;left:7px;background:rgba(11,12,19,.8);color:var(--accent);font-size:.6rem;font-weight:600;padding:1px 5px;border-radius:8px;opacity:0;transform:scale(.7);transition:all .2s;z-index:2}
+.thumb-card.selected .thumb-order{opacity:1;transform:scale(1)}
+.thumb-foot{padding:.45rem .55rem .55rem}
+.thumb-title{width:100%;background:none;border:none;color:var(--text);font-family:'Jost',sans-serif;font-size:.75rem;padding:0;outline:none;cursor:text;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thumb-title::placeholder{color:var(--text-muted)}
+.thumb-pnum{font-size:.62rem;color:var(--text-muted);margin-top:.1rem;font-weight:300}
+
+/* CONFIG PANEL */
+#config-panel{width:340px;background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
+.cfg-head{padding:.9rem 1.2rem;border-bottom:1px solid var(--border);flex-shrink:0}
+.cfg-title{font-family:'Cormorant Garamond',serif;font-size:1.15rem;font-weight:500;letter-spacing:.04em}
+.cfg-scroll{flex:0 0 auto;overflow-y:auto;max-height:62vh;border-bottom:1px solid var(--border)}
+.cfg-section{border-bottom:1px solid var(--border);padding:.8rem 1.2rem}
+.cfg-section:last-child{border-bottom:none}
+
+/* Toggle */
+.toggle-row{display:flex;align-items:center;gap:.6rem}
+.toggle-lbl{font-size:.8rem;font-weight:500;flex:1;cursor:pointer;user-select:none}
+input.tog{display:none}
+.tog-sw{width:30px;height:17px;background:var(--border);border-radius:9px;position:relative;cursor:pointer;transition:background .2s;flex-shrink:0}
+.tog-sw::after{content:'';position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:var(--text-muted);transition:all .2s}
+input.tog:checked+.tog-sw{background:var(--accent)}
+input.tog:checked+.tog-sw::after{transform:translateX(13px);background:#fff}
+
+/* Form controls */
+.cfg-fields{margin-top:.65rem;display:flex;flex-direction:column;gap:.4rem}
+.cfg-fields.hidden{display:none}
+.f-input{background:var(--card);border:1px solid var(--border);color:var(--text);font-family:'Jost',sans-serif;font-size:.78rem;padding:.4rem .65rem;border-radius:6px;outline:none;transition:border-color .2s;width:100%}
+.f-input:focus{border-color:var(--accent)}
+.f-input::placeholder{color:var(--text-muted)}
+.f-select{background:var(--card);border:1px solid var(--border);color:var(--text);font-family:'Jost',sans-serif;font-size:.75rem;padding:.35rem .55rem;border-radius:6px;outline:none;transition:border-color .2s;width:100%;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238e90a6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .55rem center;padding-right:1.6rem}
+.f-select:focus{border-color:var(--accent)}
+.f-select option{background:var(--card)}
+.f-row{display:flex;gap:.45rem;align-items:center}
+.color-pair{display:flex;flex-direction:column;align-items:center;gap:.2rem;flex:1}
+.color-lbl{font-size:.6rem;color:var(--text-muted);font-weight:500;letter-spacing:.06em;text-transform:uppercase}
+.f-color{width:100%;height:26px;border:1px solid var(--border);border-radius:5px;background:none;cursor:pointer;padding:2px;outline:none;transition:border-color .2s}
+.f-color:hover{border-color:var(--accent)}
+
+/* Font upload widget */
+.font-row{display:flex;align-items:center;gap:.35rem}
+.font-btn{flex:1;background:var(--card);border:1px dashed var(--border-l);color:var(--text-muted);font-family:'Jost',sans-serif;font-size:.71rem;padding:.32rem .55rem;border-radius:6px;cursor:pointer;transition:all .2s;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+.font-btn:hover{border-color:var(--accent);color:var(--text-dim)}
+.font-btn.loaded{border-style:solid;border-color:var(--sep-color);color:var(--sep-color)}
+.font-clr{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:.85rem;padding:0 2px;transition:color .2s;flex-shrink:0;visibility:hidden}
+.font-clr.on{visibility:visible}
+.font-clr:hover{color:#ef4444}
+.font-or{font-size:.62rem;color:var(--text-muted);margin:.15rem 0 .1rem}
+.font-section-lbl{font-size:.62rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:.25rem;display:block}
+
+/* Info bulle police */
+.info-btn{background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:50%;width:17px;height:17px;font-size:.62rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;font-family:Georgia,serif;line-height:1}
+.info-btn:hover{border-color:var(--accent);color:var(--accent)}
+#font-tooltip{
+  position:fixed;z-index:300;width:260px;
+  background:#1e2030;border:1px solid var(--border-l);border-radius:10px;
+  padding:.85rem 1rem;box-shadow:0 8px 32px rgba(0,0,0,.5);
+  font-size:.72rem;line-height:1.55;color:var(--text-dim);
+  pointer-events:none;opacity:0;transform:translateY(4px);
+  transition:opacity .18s,transform .18s;
+}
+#font-tooltip.show{opacity:1;transform:translateY(0);pointer-events:auto}
+#font-tooltip h4{font-size:.7rem;font-weight:600;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.5rem}
+#font-tooltip .os{margin-bottom:.4rem}
+#font-tooltip .os strong{color:var(--text);display:block;margin-bottom:.1rem}
+#font-tooltip code{background:rgba(255,255,255,.07);padding:.05rem .3rem;border-radius:3px;font-family:'Courier New',monospace;font-size:.68rem;color:#adb5d4}
+#font-tooltip .close-tip{position:absolute;top:.5rem;right:.6rem;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:.85rem;line-height:1;pointer-events:auto}
+#font-tooltip .close-tip:hover{color:var(--text)}
+
+/* Selection list */
+.sel-head{display:flex;align-items:center;justify-content:space-between;padding:.7rem 1.2rem .4rem;flex-shrink:0}
+.sel-lbl{font-size:.78rem;font-weight:500}
+.btn-sep{background:none;border:1px solid var(--border);color:var(--text-dim);font-family:'Jost',sans-serif;font-size:.68rem;padding:.2rem .5rem;border-radius:5px;cursor:pointer;transition:all .2s;font-weight:500}
+.btn-sep:hover{border-color:var(--sep-color);color:var(--sep-color)}
+.sel-area{flex:1;overflow-y:auto;padding:0 1.2rem .5rem;min-height:0}
+#sel-list{display:flex;flex-direction:column;gap:3px;min-height:40px}
+.empty-hint{font-family:'Cormorant Garamond',serif;font-size:.9rem;font-weight:300;font-style:italic;color:var(--text-muted);text-align:center;padding:1.5rem 1rem;line-height:1.6}
+.sel-item{display:flex;align-items:center;gap:.4rem;padding:.32rem .42rem;border-radius:6px;background:var(--card);border:1px solid var(--border);transition:background .15s}
+.sel-item:hover{background:var(--card-h)}
+.sel-item.sep-item{border-color:var(--sep-color);background:var(--sep-dim);border-style:dashed}
+.drag-h{color:var(--text-muted);cursor:grab;font-size:.8rem;user-select:none;line-height:1;flex-shrink:0}
+.drag-h:active{cursor:grabbing}
+.sel-mini{width:20px;height:28px;border-radius:2px;overflow:hidden;background:var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.sel-mini canvas{width:100%;height:100%;object-fit:contain}
+.sel-mini-sep{width:20px;height:28px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.95rem;color:var(--sep-color)}
+.sel-info{flex:1;overflow:hidden}
+.sel-title{font-size:.71rem;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sel-sub{font-size:.61rem;color:var(--text-muted)}
+.sep-inp{background:none;border:none;color:var(--sep-color);font-family:'Jost',sans-serif;font-size:.71rem;font-weight:500;outline:none;width:100%;cursor:text}
+.sep-inp::placeholder{color:rgba(91,138,212,.3)}
+.sel-rm{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:.85rem;line-height:1;padding:0 2px;flex-shrink:0;transition:color .2s}
+.sel-rm:hover{color:#ef4444}
+.sortable-ghost{opacity:.3;background:var(--accent-dim);border-radius:6px}
+
+/* Export */
+.exp-area{padding:.85rem 1.2rem;border-top:1px solid var(--border);flex-shrink:0}
+.btn-export{width:100%;background:var(--accent);border:none;color:#0a0b10;font-family:'Jost',sans-serif;font-weight:600;font-size:.88rem;padding:.75rem 1rem;border-radius:9px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:all .22s;letter-spacing:.02em}
+.btn-export:hover{background:#f0b845;box-shadow:0 4px 22px var(--accent-glow);transform:translateY(-1px)}
+.btn-export:disabled{opacity:.35;cursor:not-allowed;transform:none;box-shadow:none}
+.exp-ct{font-size:.72rem;font-weight:400;opacity:.7}
+
+/* Footer */
+#app-footer{
+  position:fixed;bottom:0;left:0;right:0;
+  padding:.35rem 1.2rem;background:rgba(11,12,19,.85);
+  backdrop-filter:blur(8px);border-top:1px solid var(--border);
+  font-size:.62rem;color:var(--text-muted);text-align:center;
+  letter-spacing:.04em;z-index:100;
+}
+#app-footer a{color:var(--text-muted);text-decoration:none;transition:color .2s}
+#app-footer a:hover{color:var(--accent)}
+
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+</style>
+</head>
+<body>
+
+<!-- UPLOAD -->
+<div id="upload-screen">
+  <div class="app-brand">
+    <span class="serif">(Dé)coupe et (re)colle</span>
+    <span class="tag">Choisir · Ordonner · Exporter</span>
+  </div>
+  <div class="drop-zone" id="drop-zone">
+    <div class="drop-icon">📄</div>
+    <p class="drop-main">Déposez votre PDF ici</p>
+    <p class="drop-sub">ou <label for="file-inp" class="file-link">parcourez vos fichiers</label></p>
+    <input type="file" id="file-inp" accept="application/pdf" hidden>
+  </div>
+  <p class="privacy">✦ Traitement 100 % local — aucune donnée transmise</p>
+</div>
+
+<!-- LOADING -->
+<div id="loading-overlay" style="display:none">
+  <div class="spinner"></div>
+  <p class="loading-msg" id="load-msg">Chargement…</p>
+</div>
+
+<!-- EDITOR -->
+<div id="editor-screen" style="display:none">
+
+  <!-- Galerie -->
+  <div id="gallery-panel">
+    <div class="gallery-bar">
+      <div class="g-file">
+        <span class="g-fname" id="g-fname">—</span>
+        <span class="g-pcount" id="g-pcount"></span>
+      </div>
+      <div class="g-btns">
+        <button class="btn-ghost" onclick="selectAll()">Tout</button>
+        <button class="btn-ghost" onclick="deselectAll()">Effacer</button>
+      </div>
+      <span class="sel-badge" id="sel-badge">0 sélectionnée</span>
+    </div>
+    <div id="thumbnails-grid"></div>
+  </div>
+
+  <!-- Panneau config -->
+  <div id="config-panel">
+    <div class="cfg-head"><span class="cfg-title">Mon PDF</span></div>
+
+    <!-- Zone scrollable : page de garde + TDM + intercalaires -->
+    <div class="cfg-scroll">
+
+      <!-- Page de garde -->
+      <div class="cfg-section">
+        <div class="toggle-row">
+          <span class="toggle-lbl" onclick="document.getElementById('cov-tog').click()">Page de garde</span>
+          <input type="checkbox" class="tog" id="cov-tog" onchange="toggleSection('cov-fields')">
+          <label for="cov-tog" class="tog-sw"></label>
+        </div>
+        <div class="cfg-fields hidden" id="cov-fields">
+          <input class="f-input" id="cov-title" placeholder="Titre" value="Mon PDF">
+          <input class="f-input" id="cov-sub"   placeholder="Sous-titre (optionnel)">
+          <input class="f-input" id="cov-date"  placeholder="Date">
+          <span class="font-section-lbl">Police standard</span>
+          <select class="f-select" id="cov-font-std">
+            <option value="Helvetica">Helvetica — sans-serif</option>
+            <option value="Times">Times — serif</option>
+            <option value="Courier">Courier — mono</option>
+          </select>
+          <div class="font-row" style="margin-top:.3rem">
+            <span class="font-section-lbl" style="margin:0;flex:1">Police personnalisée</span>
+            <button class="info-btn" onclick="showTip(event)" title="Où trouver mes polices ?">i</button>
+          </div>
+          <div class="font-row">
+            <button class="font-btn" id="cov-font-btn" onclick="document.getElementById('fi-cov').click()">↑ Charger .ttf / .otf depuis mon ordi</button>
+            <button class="font-clr" id="cov-font-clr" onclick="clearFont('cov')">✕</button>
+          </div>
+          <p class="font-or" id="cov-font-or">Aucune police chargée — standard utilisée</p>
+          <div class="f-row">
+            <div class="color-pair"><label class="color-lbl">Fond</label><input type="color" class="f-color" id="cov-bg" value="#0b0c13"></div>
+            <div class="color-pair"><label class="color-lbl">Texte</label><input type="color" class="f-color" id="cov-fg" value="#f0ede8"></div>
+            <div class="color-pair"><label class="color-lbl">Accent</label><input type="color" class="f-color" id="cov-ac" value="#e8a838"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Table des matières -->
+      <div class="cfg-section">
+        <div class="toggle-row">
+          <span class="toggle-lbl" onclick="document.getElementById('toc-tog').click()">Table des matières</span>
+          <input type="checkbox" class="tog" id="toc-tog" checked>
+          <label for="toc-tog" class="tog-sw"></label>
+        </div>
+        <div class="cfg-fields" id="toc-fields">
+          <span class="font-section-lbl">Police standard</span>
+          <select class="f-select" id="toc-font-std">
+            <option value="Helvetica">Helvetica — sans-serif</option>
+            <option value="Times">Times — serif</option>
+            <option value="Courier">Courier — mono</option>
+          </select>
+          <div class="font-row" style="margin-top:.3rem">
+            <span class="font-section-lbl" style="margin:0;flex:1">Police personnalisée</span>
+            <button class="info-btn" onclick="showTip(event)" title="Où trouver mes polices ?">i</button>
+          </div>
+          <div class="font-row">
+            <button class="font-btn" id="toc-font-btn" onclick="document.getElementById('fi-toc').click()">↑ Charger .ttf / .otf depuis mon ordi</button>
+            <button class="font-clr" id="toc-font-clr" onclick="clearFont('toc')">✕</button>
+          </div>
+          <p class="font-or" id="toc-font-or">Aucune police chargée — standard utilisée</p>
+          <div class="f-row">
+            <div class="color-pair"><label class="color-lbl">Fond</label><input type="color" class="f-color" id="toc-bg" value="#f7f6f0"></div>
+            <div class="color-pair"><label class="color-lbl">Texte</label><input type="color" class="f-color" id="toc-fg" value="#1a1a24"></div>
+            <div class="color-pair"><label class="color-lbl">Accent</label><input type="color" class="f-color" id="toc-ac" value="#e8a838"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Intercalaires -->
+      <div class="cfg-section">
+        <p class="toggle-lbl" style="margin-bottom:.6rem;cursor:default">Style des intercalaires</p>
+        <span class="font-section-lbl">Police standard</span>
+        <select class="f-select" id="sep-font-std" style="margin-bottom:.3rem">
+          <option value="Helvetica">Helvetica — sans-serif</option>
+          <option value="Times">Times — serif</option>
+          <option value="Courier">Courier — mono</option>
+        </select>
+        <div class="font-row">
+          <span class="font-section-lbl" style="margin:0;flex:1">Police personnalisée</span>
+          <button class="info-btn" onclick="showTip(event)" title="Où trouver mes polices ?">i</button>
+        </div>
+        <div class="font-row">
+          <button class="font-btn" id="sep-font-btn" onclick="document.getElementById('fi-sep').click()">↑ Charger .ttf / .otf depuis mon ordi</button>
+          <button class="font-clr" id="sep-font-clr" onclick="clearFont('sep')">✕</button>
+        </div>
+        <p class="font-or" id="sep-font-or">Aucune police chargée — standard utilisée</p>
+        <div class="f-row">
+          <div class="color-pair"><label class="color-lbl">Fond</label><input type="color" class="f-color" id="sep-bg" value="#0b0c13"></div>
+          <div class="color-pair"><label class="color-lbl">Texte</label><input type="color" class="f-color" id="sep-fg" value="#f0ede8"></div>
+          <div class="color-pair"><label class="color-lbl">Barre</label><input type="color" class="f-color" id="sep-ac" value="#5b8ad4"></div>
+        </div>
+      </div>
+
+    </div><!-- /cfg-scroll -->
+
+    <!-- Pages sélectionnées -->
+    <div class="sel-head">
+      <span class="sel-lbl">Pages sélectionnées</span>
+      <button class="btn-sep" onclick="addSep()">＋ Intercalaire</button>
+    </div>
+    <div class="sel-area">
+      <div id="sel-list">
+        <div class="empty-hint">Cliquez sur des pages<br>pour les ajouter ici</div>
+      </div>
+    </div>
+
+    <!-- Export -->
+    <div class="exp-area">
+      <button class="btn-export" id="exp-btn" onclick="doExport()" disabled>
+        <span>Générer le PDF</span>
+        <span class="exp-ct" id="exp-ct">0 page</span>
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- Pied de page -->
+<footer id="app-footer">
+  <span>
+    <a href="https://github.com/BFBF-test" target="_blank" rel="noopener">Bertrand Formet</a>
+    &nbsp;·&nbsp;
+    <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/BFBF-test/pdf-composer" target="_blank" rel="noopener">Code source</a>
+  </span>
+</footer>
+
+<!-- Inputs fichiers police (cachés) -->
+<input type="file" id="fi-cov" accept=".ttf,.otf,.woff" hidden>
+<input type="file" id="fi-toc" accept=".ttf,.otf,.woff" hidden>
+<input type="file" id="fi-sep" accept=".ttf,.otf,.woff" hidden>
+
+<!-- Tooltip info polices -->
+<div id="font-tooltip">
+  <button class="close-tip" onclick="hideTip()">✕</button>
+  <h4>Trouver ses fichiers de police</h4>
+  <div class="os">
+    <strong>Windows</strong>
+    Ouvrez <code>C:\Windows\Fonts\</code> dans l'Explorateur.<br>
+    Clic droit sur une police → <em>Propriétés</em> pour voir le nom de fichier (.ttf / .otf).
+  </div>
+  <div class="os">
+    <strong>macOS</strong>
+    Via l'app <em>Livre des polices</em> (Finder → Applications).<br>
+    Fichiers dans <code>/Library/Fonts/</code> ou <code>~/Library/Fonts/</code>.
+  </div>
+  <div class="os" style="margin-bottom:0">
+    <strong>Linux</strong>
+    Dossiers <code>/usr/share/fonts/</code> ou <code>~/.local/share/fonts/</code>.<br>
+    Commande : <code>fc-list</code> pour lister toutes les polices installées.
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ── STATE ──────────────────────────────────────────────────────────
+const S = {
+  pdfDoc:null, pdfBytes:null, fileName:'',
+  pages:[], selList:[], sepCtr:0,
+  fontBufs:{ cov:null, toc:null, sep:null }
+};
+let sortInst = null;
+
+// ── INIT ───────────────────────────────────────────────────────────
+document.getElementById('cov-date').value = new Date().toLocaleDateString('fr-FR');
+
+// PDF drop/upload
+const dz=document.getElementById('drop-zone'), fi=document.getElementById('file-inp');
+dz.addEventListener('click', e=>{ if(e.target.tagName!=='LABEL') fi.click(); });
+dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', ()=>dz.classList.remove('over'));
+dz.addEventListener('drop', e=>{ e.preventDefault(); dz.classList.remove('over'); if(e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+fi.addEventListener('change', ()=>{ if(fi.files[0]) loadFile(fi.files[0]); });
+
+// Font inputs
+['cov','toc','sep'].forEach(zone=>{
+  document.getElementById(`fi-${zone}`).addEventListener('change', function(){ onFontLoaded(zone, this); });
+});
+
+// ── TOOLTIP ────────────────────────────────────────────────────────
+const tip = document.getElementById('font-tooltip');
+function showTip(e){
+  e.stopPropagation();
+  const r = e.currentTarget.getBoundingClientRect();
+  const tw = 264;
+  let left = r.right + 8;
+  if(left + tw > window.innerWidth - 8) left = r.left - tw - 8;
+  const top = Math.min(r.top, window.innerHeight - 260);
+  tip.style.left = left + 'px';
+  tip.style.top  = top  + 'px';
+  tip.classList.add('show');
+}
+function hideTip(){ tip.classList.remove('show'); }
+document.addEventListener('click', e=>{ if(!tip.contains(e.target)) hideTip(); });
+
+// ── FONT MANAGEMENT ────────────────────────────────────────────────
+async function onFontLoaded(zone, input){
+  const file = input.files[0]; if(!file) return;
+  S.fontBufs[zone] = await file.arrayBuffer();
+  const btn=document.getElementById(`${zone}-font-btn`);
+  const clr=document.getElementById(`${zone}-font-clr`);
+  const or =document.getElementById(`${zone}-font-or`);
+  btn.textContent = '✓ ' + file.name;
+  btn.classList.add('loaded');
+  clr.classList.add('on');
+  or.textContent = '✓ Police chargée — standard ignoree';
+  input.value='';
+}
+function clearFont(zone){
+  S.fontBufs[zone]=null;
+  const btn=document.getElementById(`${zone}-font-btn`);
+  const clr=document.getElementById(`${zone}-font-clr`);
+  const or =document.getElementById(`${zone}-font-or`);
+  btn.textContent='↑ Charger une police (.ttf / .otf)';
+  btn.classList.remove('loaded');
+  clr.classList.remove('on');
+  or.textContent='Aucune police chargee — standard utilisee';
+}
+
+// ── LOAD PDF ───────────────────────────────────────────────────────
+async function loadFile(file){
+  setLoading('Lecture du fichier…');
+  S.fileName=file.name; S.pages=[]; S.selList=[]; S.sepCtr=0;
+  const buf=await file.arrayBuffer();
+  S.pdfBytes=buf.slice();
+  setLoading('Analyse du PDF…');
+  S.pdfDoc=await pdfjsLib.getDocument({ data:new Uint8Array(buf) }).promise;
+  for(let i=1;i<=S.pdfDoc.numPages;i++)
+    S.pages.push({ id:`p${i}`, pageNum:i, title:`Page ${i}`, canvas:null, selected:false, orderIdx:-1 });
+  showEditor(); renderGallery(); renderSelList(); renderAllThumbs();
+}
+
+// ── UI HELPERS ─────────────────────────────────────────────────────
+function setLoading(msg){ document.getElementById('load-msg').textContent=msg; document.getElementById('loading-overlay').style.display='flex'; }
+function hideLoading(){ document.getElementById('loading-overlay').style.display='none'; }
+function showEditor(){
+  document.getElementById('upload-screen').style.display='none';
+  document.getElementById('editor-screen').style.display='flex';
+  document.getElementById('g-fname').textContent=S.fileName;
+  document.getElementById('g-pcount').textContent=`— ${S.pdfDoc.numPages} page${S.pdfDoc.numPages>1?'s':''}`;
+  hideLoading();
+}
+function toggleSection(id){
+  const tog=document.getElementById(id.replace('-fields','-tog'));
+  document.getElementById(id).classList.toggle('hidden', !tog.checked);
+}
+
+// ── GALLERY ────────────────────────────────────────────────────────
+function renderGallery(){
+  const grid=document.getElementById('thumbnails-grid'); grid.innerHTML='';
+  S.pages.forEach(p=>{
+    const card=document.createElement('div');
+    card.className='thumb-card'; card.id=`card-${p.id}`;
+    card.innerHTML=`
+      <div class="thumb-wrap" id="wrap-${p.id}"><span class="thumb-ph">…</span></div>
+      <div class="thumb-check">✓</div>
+      <div class="thumb-order" id="ord-${p.id}"></div>
+      <div class="thumb-foot">
+        <input class="thumb-title" id="ttl-${p.id}" value="${p.title}" placeholder="Titre"
+          onclick="event.stopPropagation()" onchange="onTitleChange('${p.id}',this.value)">
+        <div class="thumb-pnum">p. ${p.pageNum}</div>
+      </div>`;
+    card.addEventListener('click',()=>togglePage(p.id));
+    grid.appendChild(card);
+  });
+}
+async function renderAllThumbs(){
+  for(const p of S.pages){
+    try{
+      const page=await S.pdfDoc.getPage(p.pageNum);
+      const vp=page.getViewport({ scale:.28 });
+      const c=document.createElement('canvas'); c.width=vp.width; c.height=vp.height;
+      await page.render({ canvasContext:c.getContext('2d'), viewport:vp }).promise;
+      p.canvas=c;
+      const wrap=document.getElementById(`wrap-${p.id}`);
+      if(wrap){ wrap.innerHTML=''; wrap.appendChild(c); }
+    }catch(e){}
+  }
+}
+function onTitleChange(id,val){ const p=S.pages.find(x=>x.id===id); if(p){ p.title=val; renderSelList(); } }
+
+// ── SELECTION ──────────────────────────────────────────────────────
+function togglePage(id){
+  const p=S.pages.find(x=>x.id===id); if(!p) return;
+  if(p.selected){ p.selected=false; p.orderIdx=-1; S.selList=S.selList.filter(i=>!(i.type==='page'&&i.pageId===id)); }
+  else{ p.selected=true; S.selList.push({ type:'page', id:`sel-${id}`, pageId:id }); }
+  reindex(); updateCard(p); renderSelList(); updateBadge();
+}
+function selectAll(){
+  S.pages.forEach(p=>{ if(!p.selected){ p.selected=true; S.selList.push({ type:'page', id:`sel-${p.id}`, pageId:p.id }); } });
+  reindex(); updateAllCards(); renderSelList(); updateBadge();
+}
+function deselectAll(){
+  S.pages.forEach(p=>{ p.selected=false; p.orderIdx=-1; }); S.selList=[];
+  updateAllCards(); renderSelList(); updateBadge();
+}
+function addSep(){
+  S.sepCtr++;
+  S.selList.push({ type:'sep', id:`sep-${S.sepCtr}`, title:`Section ${S.sepCtr}` });
+  renderSelList();
+}
+function removeItem(itemId){
+  const item=S.selList.find(i=>i.id===itemId); if(!item) return;
+  if(item.type==='page'){ const p=S.pages.find(x=>x.id===item.pageId); if(p){ p.selected=false; p.orderIdx=-1; updateCard(p); } }
+  S.selList=S.selList.filter(i=>i.id!==itemId); reindex(); updateAllCards(); renderSelList(); updateBadge();
+}
+function reindex(){ let idx=1; S.selList.forEach(item=>{ if(item.type==='page'){ const p=S.pages.find(x=>x.id===item.pageId); if(p) p.orderIdx=idx++; } }); }
+function updateCard(p){
+  const card=document.getElementById(`card-${p.id}`); const ord=document.getElementById(`ord-${p.id}`);
+  if(!card) return;
+  card.classList.toggle('selected',p.selected);
+  if(ord) ord.textContent=p.selected?p.orderIdx:'';
+}
+function updateAllCards(){ S.pages.forEach(p=>updateCard(p)); }
+function updateBadge(){
+  const n=S.pages.filter(p=>p.selected).length;
+  document.getElementById('sel-badge').textContent=`${n} sélectionnée${n>1?'s':''}`;
+}
+
+// ── SEL LIST ───────────────────────────────────────────────────────
+function renderSelList(){
+  const list=document.getElementById('sel-list');
+  if(S.selList.length===0){
+    list.innerHTML='<div class="empty-hint">Cliquez sur des pages<br>pour les ajouter ici</div>';
+    if(sortInst){ sortInst.destroy(); sortInst=null; } updateExpBtn(); return;
+  }
+  list.innerHTML='';
+  S.selList.forEach(item=>{
+    const el=document.createElement('div');
+    el.className=`sel-item${item.type==='sep'?' sep-item':''}`;
+    el.dataset.id=item.id;
+    if(item.type==='page'){
+      const p=S.pages.find(x=>x.id===item.pageId);
+      el.innerHTML=`
+        <span class="drag-h" title="Déplacer">⣿</span>
+        <div class="sel-mini" id="mini-${item.id}"></div>
+        <div class="sel-info">
+          <div class="sel-title">${p?p.title:'—'}</div>
+          <div class="sel-sub">p. ${p?p.pageNum:'?'}</div>
+        </div>
+        <button class="sel-rm" onclick="removeItem('${item.id}')" title="Retirer">✕</button>`;
+      if(p&&p.canvas){ const mc=miniCanvas(p.canvas,20,28); const mw=el.querySelector(`#mini-${item.id}`); if(mw) mw.appendChild(mc); }
+    } else {
+      el.innerHTML=`
+        <span class="drag-h" title="Déplacer">⣿</span>
+        <div class="sel-mini-sep">◈</div>
+        <div class="sel-info">
+          <input class="sep-inp" value="${item.title||''}" placeholder="Titre de l'intercalaire"
+            onclick="event.stopPropagation()" oninput="updateSepTitle('${item.id}',this.value)">
+        </div>
+        <button class="sel-rm" onclick="removeItem('${item.id}')" title="Supprimer">✕</button>`;
+    }
+    list.appendChild(el);
+  });
+  initSortable(); updateExpBtn();
+}
+function miniCanvas(src,w,h){ const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(src,0,0,w,h); return c; }
+function updateSepTitle(id,val){ const item=S.selList.find(i=>i.id===id); if(item) item.title=val; }
+function updateExpBtn(){
+  const n=S.selList.filter(i=>i.type==='page').length;
+  document.getElementById('exp-ct').textContent=`${n} page${n>1?'s':''}`;
+  document.getElementById('exp-btn').disabled=n===0;
+}
+
+// ── SORTABLE ───────────────────────────────────────────────────────
+function initSortable(){
+  if(sortInst) sortInst.destroy();
+  const list=document.getElementById('sel-list');
+  if(!list.querySelector('.sel-item')) return;
+  sortInst=Sortable.create(list,{ animation:140, handle:'.drag-h', ghostClass:'sortable-ghost', onEnd:syncFromDOM });
+}
+function syncFromDOM(){
+  const els=document.querySelectorAll('#sel-list .sel-item'); const newList=[];
+  els.forEach(el=>{ const item=S.selList.find(i=>i.id===el.dataset.id); if(item) newList.push(item); });
+  S.selList=newList; reindex(); updateAllCards();
+}
+
+// ── SANITIZE ───────────────────────────────────────────────────────
+// Supprime les diacritiques et ramène en ASCII imprimable
+// N'est appliqué QUE si la police est une StandardFont (WinAnsi)
+// Pour les polices uploadées, on passe le texte brut (elles supportent l'Unicode)
+function san(str){ return !str?'':String(str).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7E]/g,'?'); }
+
+// ── EXPORT ─────────────────────────────────────────────────────────
+function hexToRgb(hex){ return PDFLib.rgb(parseInt(hex.slice(1,3),16)/255,parseInt(hex.slice(3,5),16)/255,parseInt(hex.slice(5,7),16)/255); }
+
+// Résout la police pour une zone : custom uploadée ou standard
+// Retourne { fB, fR, fO, isCustom }
+async function resolveFont(zone, out){
+  const { StandardFonts } = PDFLib;
+  const stdMap={
+    Helvetica:[StandardFonts.HelveticaBold,StandardFonts.Helvetica,StandardFonts.HelveticaOblique],
+    Times:    [StandardFonts.TimesRomanBold,StandardFonts.TimesRoman,StandardFonts.TimesRomanItalic],
+    Courier:  [StandardFonts.CourierBold,StandardFonts.Courier,StandardFonts.CourierOblique],
+  };
+  if(S.fontBufs[zone]){
+    // Police uploadée : subset:false obligatoire pour les TTF tiers
+    const f=await out.embedFont(S.fontBufs[zone],{ subset:false });
+    return { fB:f, fR:f, fO:f, isCustom:true };
+  }
+  const std=document.getElementById(`${zone}-font-std`).value;
+  const keys=stdMap[std]||stdMap.Helvetica;
+  const [fB,fR,fO]=await Promise.all(keys.map(k=>out.embedFont(k)));
+  return { fB, fR, fO, isCustom:false };
+}
+
+// Prépare le texte selon le type de police
+function txt(str, isCustom){ return isCustom ? (str||'') : san(str); }
+
+async function doExport(){
+  const coverOn=document.getElementById('cov-tog').checked;
+  const tocOn  =document.getElementById('toc-tog').checked;
+  setLoading('Préparation…');
+  try{
+    const src=await PDFLib.PDFDocument.load(S.pdfBytes);
+    const out=await PDFLib.PDFDocument.create();
+
+    const covF=await resolveFont('cov',out);
+    const tocF=await resolveFont('toc',out);
+    const sepF=await resolveFont('sep',out);
+
+    const srcPgs=src.getPages(); const ref=srcPgs[0];
+    const PW=ref?ref.getWidth():595.28; const PH=ref?ref.getHeight():841.89;
+
+    const cBg=hexToRgb(document.getElementById('cov-bg').value);
+    const cFg=hexToRgb(document.getElementById('cov-fg').value);
+    const cAc=hexToRgb(document.getElementById('cov-ac').value);
+    const tBg=hexToRgb(document.getElementById('toc-bg').value);
+    const tFg=hexToRgb(document.getElementById('toc-fg').value);
+    const tAc=hexToRgb(document.getElementById('toc-ac').value);
+    const sBg=hexToRgb(document.getElementById('sep-bg').value);
+    const sFg=hexToRgb(document.getElementById('sep-fg').value);
+    const sAc=hexToRgb(document.getElementById('sep-ac').value);
+
+    let offset=(coverOn?1:0)+(tocOn?1:0)+1;
+    const pnMap={}; S.selList.forEach((item,i)=>{ pnMap[item.id]=offset+i; });
+
+    // ── COVER ──
+    if(coverOn){
+      const pg=out.addPage([PW,PH]);
+      pg.drawRectangle({ x:0,y:0,width:PW,height:PH,color:cBg });
+      pg.drawRectangle({ x:48,y:PH/2-5,width:72,height:4,color:cAc });
+      pg.drawRectangle({ x:0,y:0,width:PW,height:3,color:cAc });
+      pg.drawRectangle({ x:0,y:PH-3,width:PW,height:3,color:cAc });
+      const title=txt(document.getElementById('cov-title').value||'Mon PDF',covF.isCustom);
+      const tSz=Math.min(46,Math.max(24,800/Math.max(title.length,1)));
+      pg.drawText(title,{ x:48,y:PH/2+22,size:tSz,font:covF.fB,color:cFg });
+      const sub=txt(document.getElementById('cov-sub').value,covF.isCustom);
+      if(sub) pg.drawText(sub,{ x:48,y:PH/2-32,size:15,font:covF.fO,color:cFg });
+      const dt=txt(document.getElementById('cov-date').value,covF.isCustom);
+      if(dt) pg.drawText(dt,{ x:48,y:52,size:10,font:covF.fR,color:cFg });
+    }
+
+    // ── TOC ──
+    if(tocOn){
+      const pg=out.addPage([PW,PH]);
+      pg.drawRectangle({ x:0,y:0,width:PW,height:PH,color:tBg });
+      pg.drawRectangle({ x:0,y:PH-70,width:PW,height:70,color:tAc });
+      pg.drawRectangle({ x:0,y:PH-72,width:90,height:3,color:tFg });
+      pg.drawText(txt('TABLE DES MATIERES',tocF.isCustom),{ x:48,y:PH-46,size:12,font:tocF.fB,color:tBg });
+      let y=PH-112;
+      S.selList.forEach(item=>{
+        if(y<72) return;
+        if(item.type==='sep'){
+          y-=4; pg.drawRectangle({ x:48,y:y-1,width:PW-96,height:.5,color:tFg }); y-=16;
+          pg.drawText(txt((item.title||'Section').toUpperCase(),tocF.isCustom),{ x:48,y,size:8,font:tocF.fB,color:tAc });
+          y-=20;
+        } else {
+          const p=S.pages.find(x=>x.id===item.pageId);
+          const t=txt(p?p.title:'-',tocF.isCustom); const n=String(pnMap[item.id]||'');
+          pg.drawText(t,{ x:60,y,size:10,font:tocF.fR,color:tFg });
+          const nw=tocF.fB.widthOfTextAtSize(n,10);
+          pg.drawText(n,{ x:PW-60-nw,y,size:10,font:tocF.fB,color:tFg });
+          const tw=tocF.fR.widthOfTextAtSize(t,10);
+          let dx=60+tw+6; const dEnd=PW-60-nw-6;
+          while(dx<dEnd-4){ pg.drawText('.',{ x:dx,y,size:10,font:tocF.fR,color:tFg }); dx+=5; }
+          y-=20;
+        }
+      });
+    }
+
+    // ── CONTENT ──
+    setLoading('Assemblage des pages…');
+    for(const item of S.selList){
+      if(item.type==='sep'){
+        const pg=out.addPage([PW,PH]);
+        pg.drawRectangle({ x:0,y:0,width:PW,height:PH,color:sBg });
+        pg.drawRectangle({ x:0,y:0,width:6,height:PH,color:sAc });
+        pg.drawRectangle({ x:48,y:PH/2+20,width:56,height:3,color:sAc });
+        const st=txt(item.title||'Section',sepF.isCustom);
+        const sz=Math.min(34,Math.max(18,600/Math.max(st.length,1)));
+        pg.drawText(st,{ x:48,y:PH/2-8,size:sz,font:sepF.fB,color:sFg });
+      } else {
+        const p=S.pages.find(x=>x.id===item.pageId);
+        if(p){ const [cp]=await out.copyPages(src,[p.pageNum-1]); out.addPage(cp); }
+      }
+    }
+
+    setLoading('Finalisation…');
+    const bytes=await out.save();
+    const blob=new Blob([bytes],{ type:'application/pdf' });
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url;
+    a.download=S.fileName.replace(/\.pdf$/i,'')+'-repagine.pdf';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),8000);
+    hideLoading();
+
+  }catch(err){
+    hideLoading(); console.error(err);
+    alert('Erreur lors de l\'export :\n'+err.message);
+  }
+}
+</script>
+</body>
+</html>

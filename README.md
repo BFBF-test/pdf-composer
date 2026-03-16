@@ -59,7 +59,6 @@ Vous avez un PDF de 50 pages et vous voulez en extraire 12, les réordonner, ajo
 
 Le fichier est accessible directement via GitHub Pages :  
 👉 **[https://bertrandformet.github.io/pdf-composer](https://bertrandformet.github.io/pdf-composer)**  
-*(activer Pages dans les réglages du dépôt si nécessaire)*
 
 ---
 
@@ -94,7 +93,3 @@ Tout le traitement se fait côté client, grâce à trois bibliothèques chargé
 Vous êtes libre de partager, modifier et utiliser ce projet, y compris à des fins commerciales, à condition de **créditer l'auteur**.
 
 > Auteur : **Bertrand Formet** — [github.com/BFBF-test](https://github.com/BFBF-test)
-
----
-
-*Fait avec soin, sans serveur.*

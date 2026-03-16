@@ -58,7 +58,7 @@ Vous avez un PDF de 50 pages et vous voulez en extraire 12, les réordonner, ajo
 ### Option 2 — GitHub Pages
 
 Le fichier est accessible directement via GitHub Pages :  
-👉 **[https://bfbf-test.github.io/pdf-composer](https://bfbf-test.github.io/pdf-composer)**  
+👉 **[https://bertrandformet.github.io/pdf-composer](https://bertrandformet.github.io/pdf-composer)**  
 *(activer Pages dans les réglages du dépôt si nécessaire)*
 
 ---
